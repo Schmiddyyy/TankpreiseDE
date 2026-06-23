@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+
+# Bulk source data from the tankerkoenig repo (huge; not part of this project)
+prices/
+stations/
+
+# Generated data products (reproducible via scripts/; weekly.json alone is ~20 MB)
+web/data/*.json
+web/data/*.csv
+
+# Generated pages (rebuilt by border_stats.py / oil_vs_fuel.py)
+web/border_stats.html
+web/fuel_vs_oil.html

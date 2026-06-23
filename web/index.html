@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tankstellen-Karte</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body, #map { height: 100%; margin: 0; }
+    #map { background: #f5f5f5; }
+    .panel {
+      position: absolute; top: 12px; right: 12px; z-index: 1000;
+      background: #fff; padding: 10px 12px; border-radius: 8px;
+      box-shadow: 0 1px 6px rgba(0,0,0,.3); font: 13px/1.4 system-ui, sans-serif;
+    }
+    .panel h1 { font-size: 14px; margin: 0 0 6px; }
+    .panel label { display: block; margin: 4px 0; cursor: pointer; }
+    .legend { margin-top: 8px; }
+    .legend i { display: inline-block; width: 14px; height: 14px; margin-right: 4px; border-radius: 50%; vertical-align: -2px; }
+    .muted { color: #777; font-size: 11px; }
+    .leaflet-popup-content { font: 13px/1.5 system-ui, sans-serif; }
+    .leaflet-popup-content b { font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="panel">
+    <h1>Tankstellen-Karte</h1>
+    <nav style="margin-bottom:8px"><a href="animation.html">Animation</a> · <a href="border_stats.html">Grenznähe-Statistik</a> · <a href="fuel_vs_oil.html">Rohöl-Vergleich</a></nav>
+    <div><b>Ansicht</b></div>
+    <label><input type="radio" name="mode" value="price" checked> Preis</label>
+    <label><input type="radio" name="mode" value="border"> Grenznähe</label>
+    <div id="fuelbox" style="margin-top:6px"><b>Kraftstoff</b>
+      <label><input type="radio" name="fuel" value="e5" checked> Super E5</label>
+      <label><input type="radio" name="fuel" value="e10"> Super E10</label>
+      <label><input type="radio" name="fuel" value="diesel"> Diesel</label>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="muted" id="stats"></div>
+    <div class="muted" id="meta"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map', { preferCanvas: true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    // Green (cheap) -> red (expensive) by price quantile of the chosen fuel.
+    const RAMP = ['#1a9850', '#66bd63', '#a6d96a', '#fee08b', '#f46d43', '#d73027'];
+    let layer = null;
+
+    function quantiles(values) {
+      const s = [...values].sort((a, b) => a - b);
+      const q = i => s[Math.floor((s.length - 1) * i)];
+      return [q(0.1), q(0.3), q(0.5), q(0.7), q(0.9)]; // 5 cuts -> 6 buckets
+    }
+    function colorFor(price, cuts) {
+      if (price == null) return '#bbb';
+      let i = 0; while (i < cuts.length && price > cuts[i]) i++;
+      return RAMP[i];
+    }
+    const fmt = v => v == null ? '—' : v.toFixed(3) + ' €';
+    const mean = a => a.reduce((s, x) => s + x, 0) / a.length;
+    let DATA = null, MODE = 'price';
+
+    function legendHTML(swatches, extra) {
+      document.getElementById('legend').innerHTML =
+        swatches.map(([c, t]) => `<div><i style="background:${c}"></i>${t}</div>`).join('')
+        + (extra || '');
+    }
+
+    function renderPrice(fuel) {
+      const priced = DATA.stations.filter(s => s[fuel] != null);
+      const cuts = quantiles(priced.map(s => s[fuel]));
+      build(s => colorFor(s[fuel], cuts));
+      legendHTML(RAMP.map((c, i) => {
+        const lo = i === 0 ? '' : cuts[i - 1].toFixed(2);
+        const hi = i < cuts.length ? cuts[i].toFixed(2) : '';
+        return [c, i === 0 ? `< ${hi}` : i === RAMP.length - 1 ? `> ${lo}` : `${lo}–${hi} €`];
+      }), `<div><i style="background:#bbb"></i>kein Preis</div>`);
+      document.getElementById('stats').textContent = '';
+    }
+
+    // Border view: same price heatmap, but border-zone stations get a dark
+    // outline so you see prices AND the zone at once; plus a price comparison.
+    function renderBorder(fuel) {
+      const zone = DATA.border_zone_km || 25;
+      const priced = DATA.stations.filter(s => s[fuel] != null);
+      const cuts = quantiles(priced.map(s => s[fuel]));
+      const inBorder = s => s.border_km <= zone;
+      // Fade inland stations far back so the border zone stands out.
+      build(s => colorFor(s[fuel], cuts), 4,
+            s => inBorder(s) ? { color: '#111', weight: 1.4 } : null,
+            s => inBorder(s) ? 0.9 : 0.06);
+      legendHTML(RAMP.map((c, i) => {
+        const lo = i === 0 ? '' : cuts[i - 1].toFixed(2);
+        const hi = i < cuts.length ? cuts[i].toFixed(2) : '';
+        return [c, i === 0 ? `< ${hi}` : i === RAMP.length - 1 ? `> ${lo}` : `${lo}–${hi} €`];
+      }), `<div><i style="background:#bbb"></i>kein Preis</div>` +
+          `<div style="margin-top:4px"><i style="background:#fff;border:1.5px solid #111"></i>umrandet = Grenzzone ≤ ${zone} km</div>`);
+      const inZone = priced.filter(inBorder).map(s => s[fuel]);
+      const inland = priced.filter(s => !inBorder(s)).map(s => s[fuel]);
+      const diff = (mean(inZone) - mean(inland)) * 100;
+      document.getElementById('stats').innerHTML =
+        `<b>${fuel.toUpperCase()}</b> Ø Grenzzone ${mean(inZone).toFixed(3)} € · ` +
+        `Inland ${mean(inland).toFixed(3)} €<br>Differenz <b>${diff >= 0 ? '+' : ''}${diff.toFixed(2)} ct/L</b>`;
+    }
+
+    function build(colorFn, radius = 4, strokeFn = null, opacityFn = null) {
+      if (layer) map.removeLayer(layer);
+      layer = L.layerGroup(DATA.stations.map(s => {
+        const stroke = strokeFn && strokeFn(s);
+        const fillOpacity = opacityFn ? opacityFn(s) : 0.85;
+        const m = L.circleMarker([s.lat, s.lng], {
+          radius, fillOpacity, fillColor: colorFn(s),
+          weight: stroke ? stroke.weight : 0, color: stroke ? stroke.color : undefined
+        });
+        const km = s.border_km != null ? `<br>Grenze: ${s.border_km} km` : '';
+        m.bindPopup(`<b>${s.name || 'Tankstelle'}</b><br>` +
+          `Super E5: ${fmt(s.e5)}<br>Super E10: ${fmt(s.e10)}<br>Diesel: ${fmt(s.diesel)}${km}`);
+        return m;
+      })).addTo(map);
+    }
+
+    function render() {
+      const fuel = document.querySelector('input[name=fuel]:checked').value;
+      const hasBorder = DATA.stations[0] && DATA.stations[0].border_km != null;
+      document.querySelector('input[value=border]').disabled = !hasBorder;
+      (MODE === 'border' && hasBorder ? renderBorder : renderPrice)(fuel);
+    }
+
+    // Prefer the border-tagged snapshot; fall back to the plain one.
+    fetch('data/snapshot_borders.json').then(r => r.ok ? r.json() : Promise.reject())
+      .catch(() => fetch('data/snapshot.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }))
+      .then(data => {
+        DATA = data;
+        const b = data.bounds;
+        map.fitBounds([[b.south, b.west], [b.north, b.east]]);
+        document.getElementById('meta').textContent =
+          `${data.stations.length.toLocaleString('de')} Tankstellen · Stand ${data.source_date}`;
+        render();
+        document.querySelectorAll('input[name=fuel]').forEach(r => r.addEventListener('change', render));
+        document.querySelectorAll('input[name=mode]').forEach(r =>
+          r.addEventListener('change', e => { MODE = e.target.value; render(); }));
+      })
+      .catch(err => {
+        document.getElementById('meta').textContent =
+          'snapshot.json konnte nicht geladen werden (' + err.message + '). ' +
+          'Bitte über einen lokalen Webserver öffnen.';
+      });
+  </script>
+</body>
+</html>
