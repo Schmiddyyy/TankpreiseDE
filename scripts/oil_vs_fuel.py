@@ -117,7 +117,7 @@ def write_html(path: str, rows: list[dict]) -> None:
 <title>Kraftstoff vs. Rohöl (Brent)</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>body{font:14px system-ui;margin:24px}#c{max-width:1100px}nav a{margin-right:14px}</style></head>
-<body><nav><a href="index.html">← Karte</a><a href="border_stats.html">Grenznähe-Statistik</a></nav>
+<body><nav><a href="index.html">← Karte</a><a href="border_stats.html">Grenznähe-Statistik</a><a href="factory_stats.html">Autowerke</a></nav>
 <h1>Kraftstoffpreise vs. Rohöl (Brent)</h1>
 <p>Bundesweiter Durchschnitt €/L (linke Achse) gegen Brent USD/Barrel (rechte Achse).</p>
 <div id="c"><canvas id="chart"></canvas></div>

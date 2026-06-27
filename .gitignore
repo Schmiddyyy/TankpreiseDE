@@ -10,6 +10,7 @@ stations/
 web/data/*.json
 web/data/*.csv
 
-# Generated pages (rebuilt by border_stats.py / oil_vs_fuel.py)
+# Generated pages (rebuilt by border_stats.py / factory_stats.py / oil_vs_fuel.py)
 web/border_stats.html
+web/factory_stats.html
 web/fuel_vs_oil.html

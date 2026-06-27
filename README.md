@@ -46,12 +46,15 @@ tankerkoenig-data/        ← repo root (the bulk clone)
 │   ├── ingest.py
 │   ├── border_zones.py
 │   ├── border_stats.py
+│   ├── factory_zones.py
+│   ├── factory_stats.py
 │   ├── oil_vs_fuel.py
 │   └── weekly_series.py
 └── web/                  the static site (served by http.server)
     ├── index.html        price map + border-zone view
     ├── animation.html    weekly price time-lapse
     ├── border_stats.html generated
+    ├── factory_stats.html generated
     ├── fuel_vs_oil.html  generated
     └── data/             generated JSON/CSV the pages fetch (gitignored)
 ```
@@ -68,11 +71,14 @@ crude). Outputs land in `web/data/`:
 python3 scripts/ingest.py          # -> web/data/snapshot.json         (price per station)
 python3 scripts/border_zones.py    # -> web/data/snapshot_borders.json (+ border distance)
 python3 scripts/border_stats.py    # -> web/border_stats.html          (border vs inland)
+python3 scripts/factory_zones.py   # -> web/data/snapshot_factories.json (+ factory distance)
+python3 scripts/factory_stats.py   # -> web/factory_stats.html         (near car plants vs rest)
 python3 scripts/oil_vs_fuel.py     # -> web/data/fuel_vs_oil.csv + .html (weekly; ~6 min)
 python3 scripts/weekly_series.py --from 2021-01-01   # -> web/data/weekly.json (animation)
 ```
 
 Useful flags: `ingest.py --max-days N`, `border_zones.py --zone KM`,
+`factory_zones.py --zone KM`,
 `oil_vs_fuel.py --stride 1` (full daily resolution, ~40 min),
 `weekly_series.py --fuel diesel --from 2014-06-08 --stride 7`.
 
@@ -91,6 +97,7 @@ Then open **http://localhost:8000/** :
 | `index.html` | Map of all stations, colored by price; toggle to a border-zone view |
 | `animation.html` | Weekly price time-lapse with play/pause + slider |
 | `border_stats.html` | Average price near the border vs. inland, by fuel and distance band |
+| `factory_stats.html` | Average price near car factories (≤10 km) vs. the rest, by distance band |
 | `fuel_vs_oil.html` | National avg pump price (2014→today) vs. Brent crude |
 
 ## Notes

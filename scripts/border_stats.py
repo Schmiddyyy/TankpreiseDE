@@ -71,7 +71,7 @@ TEMPLATE = """<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
  .pos{color:#d73027;font-weight:600} .canvas{max-width:760px;margin:18px 0}
  .muted{color:#777;font-size:13px} nav a{margin-right:14px}
 </style></head><body>
-<nav><a href="index.html">← Karte</a><a href="fuel_vs_oil.html">Rohöl-Vergleich</a></nav>
+<nav><a href="index.html">← Karte</a><a href="factory_stats.html">Autowerke</a><a href="fuel_vs_oil.html">Rohöl-Vergleich</a></nav>
 <h1>Preise an der Grenze vs. Inland</h1>
 <p class="muted" id="meta"></p>
 <table id="head"></table>

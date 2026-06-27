@@ -26,10 +26,11 @@
   <div id="map"></div>
   <div class="panel">
     <h1>Tankstellen-Karte</h1>
-    <nav style="margin-bottom:8px"><a href="animation.html">Animation</a> · <a href="border_stats.html">Grenznähe-Statistik</a> · <a href="fuel_vs_oil.html">Rohöl-Vergleich</a></nav>
+    <nav style="margin-bottom:8px"><a href="animation.html">Animation</a> · <a href="border_stats.html">Grenznähe</a> · <a href="factory_stats.html">Autowerke</a> · <a href="fuel_vs_oil.html">Rohöl</a></nav>
     <div><b>Ansicht</b></div>
     <label><input type="radio" name="mode" value="price" checked> Preis</label>
     <label><input type="radio" name="mode" value="border"> Grenznähe</label>
+    <label><input type="radio" name="mode" value="factory"> Autowerke</label>
     <div id="fuelbox" style="margin-top:6px"><b>Kraftstoff</b>
       <label><input type="radio" name="fuel" value="e5" checked> Super E5</label>
       <label><input type="radio" name="fuel" value="e10"> Super E10</label>
@@ -108,6 +109,44 @@
         `Inland ${mean(inland).toFixed(3)} €<br>Differenz <b>${diff >= 0 ? '+' : ''}${diff.toFixed(2)} ct/L</b>`;
     }
 
+    // Factory view: price heatmap, near-factory stations outlined purple, the
+    // rest faded; plant locations marked; near-vs-rest price comparison.
+    let factoryLayer = null;
+    function renderFactory(fuel) {
+      const zone = DATA.factory_zone_km || 10;
+      const priced = DATA.stations.filter(s => s[fuel] != null);
+      const cuts = quantiles(priced.map(s => s[fuel]));
+      const near = s => s.factory_km <= zone;
+      build(s => colorFor(s[fuel], cuts), 4,
+            s => near(s) ? { color: '#7b3294', weight: 1.6 } : null,
+            s => near(s) ? 0.9 : 0.06);
+      showFactoryMarkers(true);
+      legendHTML(RAMP.map((c, i) => {
+        const lo = i === 0 ? '' : cuts[i - 1].toFixed(2);
+        const hi = i < cuts.length ? cuts[i].toFixed(2) : '';
+        return [c, i === 0 ? `< ${hi}` : i === RAMP.length - 1 ? `> ${lo}` : `${lo}–${hi} €`];
+      }), `<div><i style="background:#bbb"></i>kein Preis</div>` +
+          `<div style="margin-top:4px"><i style="background:#fff;border:1.6px solid #7b3294"></i>umrandet = ≤ ${zone} km Werk</div>` +
+          `<div><i style="background:#111;border-radius:0"></i>Autowerk</div>`);
+      const inZone = priced.filter(near).map(s => s[fuel]);
+      const rest = priced.filter(s => !near(s)).map(s => s[fuel]);
+      const diff = (mean(inZone) - mean(rest)) * 100;
+      document.getElementById('stats').innerHTML =
+        `<b>${fuel.toUpperCase()}</b> Ø ≤${zone}km Werk ${mean(inZone).toFixed(3)} € · ` +
+        `übrige ${mean(rest).toFixed(3)} €<br>Differenz <b>${diff >= 0 ? '+' : ''}${diff.toFixed(2)} ct/L</b>`;
+    }
+
+    function showFactoryMarkers(on) {
+      if (factoryLayer) { map.removeLayer(factoryLayer); factoryLayer = null; }
+      if (!on || !DATA.factories) return;
+      factoryLayer = L.layerGroup(DATA.factories.map(f =>
+        L.marker([f.lat, f.lng], {
+          icon: L.divIcon({ className: '', iconSize: [12, 12],
+            html: '<div style="width:10px;height:10px;background:#111;border:1.5px solid #fff;transform:rotate(45deg)"></div>' })
+        }).bindPopup(`<b>${f.name}</b>`)
+      )).addTo(map);
+    }
+
     function build(colorFn, radius = 4, strokeFn = null, opacityFn = null) {
       if (layer) map.removeLayer(layer);
       layer = L.layerGroup(DATA.stations.map(s => {
@@ -118,22 +157,32 @@
           weight: stroke ? stroke.weight : 0, color: stroke ? stroke.color : undefined
         });
         const km = s.border_km != null ? `<br>Grenze: ${s.border_km} km` : '';
+        const fk = s.factory_km != null ? `<br>Werk: ${s.factory_km} km (${s.factory})` : '';
         m.bindPopup(`<b>${s.name || 'Tankstelle'}</b><br>` +
-          `Super E5: ${fmt(s.e5)}<br>Super E10: ${fmt(s.e10)}<br>Diesel: ${fmt(s.diesel)}${km}`);
+          `Super E5: ${fmt(s.e5)}<br>Super E10: ${fmt(s.e10)}<br>Diesel: ${fmt(s.diesel)}${km}${fk}`);
         return m;
       })).addTo(map);
     }
 
     function render() {
       const fuel = document.querySelector('input[name=fuel]:checked').value;
-      const hasBorder = DATA.stations[0] && DATA.stations[0].border_km != null;
+      const s0 = DATA.stations[0] || {};
+      const hasBorder = s0.border_km != null;
+      const hasFactory = s0.factory_km != null;
       document.querySelector('input[value=border]').disabled = !hasBorder;
-      (MODE === 'border' && hasBorder ? renderBorder : renderPrice)(fuel);
+      document.querySelector('input[value=factory]').disabled = !hasFactory;
+      if (MODE !== 'factory') showFactoryMarkers(false);
+      if (MODE === 'factory' && hasFactory) renderFactory(fuel);
+      else if (MODE === 'border' && hasBorder) renderBorder(fuel);
+      else renderPrice(fuel);
     }
 
     // Prefer the border-tagged snapshot; fall back to the plain one.
-    fetch('data/snapshot_borders.json').then(r => r.ok ? r.json() : Promise.reject())
-      .catch(() => fetch('data/snapshot.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }))
+    // Prefer the most-augmented snapshot (factory > border > plain).
+    const tryFetch = urls => urls.length
+      ? fetch(urls[0]).then(r => r.ok ? r.json() : Promise.reject()).catch(() => tryFetch(urls.slice(1)))
+      : Promise.reject(new Error('no snapshot found'));
+    tryFetch(['data/snapshot_factories.json', 'data/snapshot_borders.json', 'data/snapshot.json'])
       .then(data => {
         DATA = data;
         const b = data.bounds;
